@@ -1,17 +1,6 @@
-"""
-main.py — pygame Starter Project
-=================================
-Session 1 Template: Run the Starter pygame Window
-
-HOW TO RUN:
-    python main.py
-
-CONTROLS:
-    ESC  → Quit the game
-"""
-
 import os
 import sys
+from random import randint
 
 # ── Headless / Codespaces environment fixes ───────────────────────────────────
 if not os.environ.get("DISPLAY"):
@@ -25,18 +14,21 @@ os.environ["SDL_AUDIODRIVER"] = "dummy"
 
 import pygame
 
-# ─────────────────────────────────────────
-#  INITIALISE pygame
-# ─────────────────────────────────────────
 pygame.init()
 
-# ─────────────────────────────────────────
-#  SCREEN / WINDOW SETUP
-# ─────────────────────────────────────────
-SCREEN_WIDTH  = 640
-SCREEN_HEIGHT = 480
-TITLE         = "Pygame"
+SCREEN_WIDTH  = 900
+SCREEN_HEIGHT = 600
+TITLE         = "no game"
+player = pygame.Rect(100,100,40,40)
+enemy = pygame.Rect(300,200,40,40)
+enemy2 = pygame.Rect(600,500,40,40)
+PLAYER_SPEED = 5
+ENEMY_SPEED = 3
+game_over = False
+font = pygame.font.Font(None, 36)
 
+score = 0
+counter = 0
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption(TITLE)
 
@@ -52,7 +44,7 @@ FPS = 60
 BLACK  = (  0,   0,   0)
 WHITE  = (255, 255, 255)
 RED    = (255,   0,   0)
-GRAY   = ( 40,  40,  40)
+GRAY   = ( 100,  100,  100)
 
 # ─────────────────────────────────────────
 #  GAME LOOP
@@ -60,8 +52,7 @@ GRAY   = ( 40,  40,  40)
 running = True
 
 while running:
-
-    # ── EVENT HANDLING ───────────────────
+    # ── EVENT HANDLING ───────────────────s
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -70,17 +61,95 @@ while running:
                 running = False
 
     # ── UPDATE ───────────────────────────
-    # (nothing to update yet!)
+    keys = pygame.key.get_pressed()
+
+    if keys[pygame.K_LEFT]:
+        player.x -= PLAYER_SPEED
+    if keys[pygame.K_RIGHT]:
+        player.x += PLAYER_SPEED
+    if keys[pygame.K_UP]:
+        player.y -= PLAYER_SPEED
+    if keys[pygame.K_DOWN]:
+        player.y += PLAYER_SPEED
+    
+    if player.x < -40:
+        player.x = SCREEN_WIDTH + 39
+    elif player.x > SCREEN_WIDTH + 40:
+        player.x = -39
+    elif player.y < -40:
+        player.y = SCREEN_HEIGHT+39
+    elif player.y > SCREEN_HEIGHT +40:
+        player.y = -39
+    
+    if enemy.x < player.x:
+        enemy.x += ENEMY_SPEED
+    if enemy.x > player.x:
+        enemy.x -= ENEMY_SPEED
+    if enemy.y < player.y:
+        enemy.y += ENEMY_SPEED
+    if enemy.y > player.y:
+        enemy.y -= ENEMY_SPEED
+
+
+    
+    if enemy.x < -40:
+        enemy.x = SCREEN_WIDTH + 39
+    elif enemy.x > SCREEN_WIDTH + 40:
+        enemy.x = -39
+    elif enemy.y < -40:
+        enemy.y = SCREEN_HEIGHT+39
+    elif enemy.y > SCREEN_HEIGHT +40:
+        enemy.y = -39
+
+    if enemy2.x < player.x:
+        enemy2.x += ENEMY_SPEED+1
+    if enemy2.x > player.x:
+        enemy2.x -= ENEMY_SPEED+1
+    if enemy2.y < player.y:
+        enemy2.y += ENEMY_SPEED+1
+    if enemy2.y > player.y:
+        enemy2.y -= ENEMY_SPEED+1
+
+
+    
+    if enemy2.x < -40:
+        enemy2.x = SCREEN_WIDTH + 39
+    elif enemy2.x > SCREEN_WIDTH + 40:
+        enemy2.x = -39
+    elif enemy2.y < -40:
+        enemy2.y = SCREEN_HEIGHT+39
+    elif enemy2.y > SCREEN_HEIGHT +40:
+        enemy2.y = -39
+        
+    counter += 1
+    if counter == 60:
+        score += 1
+        counter = 0
+        PLAYER_SPEED = randint(5,10)
+        ENEMY_SPEED = randint(5,8)
+
+    if player.colliderect(enemy) or player.colliderect(enemy2):
+        screen.fill((255,0,0))
+        pygame.display.flip()
+        pygame.time.delay(100)
+        game_over = True
+
+    if game_over:
+        player.x,player.y = SCREEN_WIDTH//2,SCREEN_HEIGHT//2
+        enemy.x,enemy.y = randint(0,SCREEN_WIDTH),randint(0,SCREEN_HEIGHT)
+        enemy2.x,enemy2.y = randint(0,SCREEN_WIDTH),randint(0,SCREEN_HEIGHT)
+        score = 0
+        game_over = False
 
     # ── RENDER ───────────────────────────
 
-    # 1. Clear the screen with a background colour
     screen.fill(BLACK)
-
-    # 2. Flip / update the display
+    pygame.draw.rect(screen, WHITE, player)
+    pygame.draw.rect(screen, RED, enemy)
+    pygame.draw.rect(screen, GRAY, enemy2)
+    score_text = font.render(f"Score: {score}", True, (255,255,255))
+    screen.blit(score_text, (10,10))
     pygame.display.flip()
-
-    # 3. Tick the clock (cap at FPS)
     clock.tick(FPS)
 
 # ─────────────────────────────────────────
