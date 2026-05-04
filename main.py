@@ -1,5 +1,6 @@
 import os
 import sys
+from random import randint
 
 # ── Headless / Codespaces environment fixes ───────────────────────────────────
 if not os.environ.get("DISPLAY"):
@@ -19,9 +20,12 @@ SCREEN_WIDTH  = 900
 SCREEN_HEIGHT = 600
 TITLE         = "no game"
 player = pygame.Rect(100,100,40,40)
-PLAYER_SPEED = 3
+PLAYER_SPEED = 5
+game_over = False
+score = 0
+collectibles = [pygame.Rect(300,100,20,20),pygame.Rect(500,300,20,20)]
+hazard = [pygame.Rect(400,200,20,20)]
 font = pygame.font.Font(None, 36)
-
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption(TITLE)
 
@@ -37,6 +41,7 @@ FPS = 60
 BLACK  = (  0,   0,   0)
 WHITE  = (255, 255, 255)
 RED    = (255,   0,   0)
+GREEN = (0, 255, 0)
 GRAY   = ( 100,  100,  100)
 
 # ─────────────────────────────────────────
@@ -65,11 +70,62 @@ while running:
     if keys[pygame.K_DOWN]:
         player.y += PLAYER_SPEED
     
+    if player.x < -40:
+        player.x = SCREEN_WIDTH + 39
+    elif player.x > SCREEN_WIDTH + 40:
+        player.x = -39
+    elif player.y < -40:
+        player.y = SCREEN_HEIGHT+39
+    elif player.y > SCREEN_HEIGHT +40:
+        player.y = -39
+    
+    if h.x < player.x:
+        h.x += 3
+    if h.x > player.x:
+        h.x -= 3
+    if h.y < player.y:
+        h.y += 3
+    if h.y > player.y:
+        h.y -= 3
+
+    if player.colliderect(h):
+            player.x, player.y = 100,200
+            game_over = True
+    
+    if h.x < -40:
+        h.x = SCREEN_WIDTH + 39
+    elif h.x > SCREEN_WIDTH + 40:
+        h.x = -39
+    elif h.y < -40:
+        h.y = SCREEN_HEIGHT+39
+    elif h.y > SCREEN_HEIGHT +40:
+        h.y = -39
+
+    for c in collectibles[:]:
+        if player.colliderect(c):
+            collectibles.remove(c)
+            score += 1
+
+    if game_over:
+        screen.fill(RED)
+        pygame.display.flip()
+        pygame.time.delay(500)
+        score = 0
+        collectibles = [pygame.Rect(300,100,20,20),pygame.Rect(500,300,20,20)]
+        game_over = False
+        
 
     # ── RENDER ───────────────────────────
 
     screen.fill(BLACK)
+    for c in collectibles:
+        pygame.draw.rect(screen, GREEN, c)
+    for h in hazard:
+        pygame.draw.rect(screen, RED, h)
     pygame.draw.rect(screen, WHITE, player)
+    score_text = font.render(f"Score: {score}", True, (255,255,255))
+    screen.blit(score_text, (10,10))
+    
     pygame.display.flip()
     clock.tick(FPS)
 
