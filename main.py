@@ -1617,7 +1617,6 @@ while running:
     # =========================================================================
 
     for event in pygame.event.get():
-
         if event.type == pygame.QUIT:
 
             running = False
@@ -1650,7 +1649,6 @@ while running:
             # -----------------------------------------------------------------
             # PLAYING
             # -----------------------------------------------------------------
-
             elif game.state == "playing":
 
                 if event.key in (
