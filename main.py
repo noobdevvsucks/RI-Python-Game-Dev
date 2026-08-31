@@ -1,6 +1,7 @@
 import os
 import sys
 from random import randint, uniform
+import math
 import pygame
 
 
@@ -38,8 +39,8 @@ FPS = 60
 
 PLAYER_SIZE = 40
 
-PLAYER_ACCELERATION = 0.25
-PLAYER_DECELERATION = 0.12
+PLAYER_ACCELERATION = 0.12
+PLAYER_DECELERATION = 0.24
 PLAYER_MAX_SPEED = 10
 
 
@@ -47,17 +48,33 @@ PLAYER_MAX_SPEED = 10
 # ENEMIES
 # =============================================================================
 
-# Half the size of the teleport marker
 ENEMY_SIZE = 8
 
 MIN_ENEMY_SPEED = 1.0
 MAX_ENEMY_SPEED = 3.0
 
-# How quickly enemy velocity changes
 ENEMY_ACCELERATION = 0.025
 
-# How much random jitter enemies receive
 ENEMY_JITTER = 0.25
+
+
+# =============================================================================
+# BEAMS
+# =============================================================================
+
+BEAM_WIDTH = 10
+
+BEAM_WARNING_DURATION = 1.0
+
+BEAM_DURATION = 1.0
+
+BEAM_COUNT = 3
+
+SCREEN_SHAKE_AMOUNT = 12
+
+SCREEN_SHAKE_DURATION = 0.25
+
+BEAM_COLOUR = (255, 0, 0)
 
 
 # =============================================================================
@@ -66,7 +83,6 @@ ENEMY_JITTER = 0.25
 
 TELEPORT_SIZE = 15
 
-# Cooldown after actually teleporting
 TELEPORT_COOLDOWN = 10.0
 
 
@@ -74,10 +90,8 @@ TELEPORT_COOLDOWN = 10.0
 # SCORE
 # =============================================================================
 
-# One point every 60 frames / approximately 1 second
 SCORE_INTERVAL = 60
 
-# One additional enemy every 2 points
 ENEMY_SCORE_INTERVAL = 2
 
 
@@ -125,25 +139,21 @@ class Enemy:
 
     def __init__(self, x, y):
 
-        # Position
         self.position = pygame.Vector2(
             x,
             y
         )
 
-        # Velocity
         self.velocity = pygame.Vector2(
             0,
             0
         )
 
-        # Current target speed
         self.speed = uniform(
             MIN_ENEMY_SPEED,
             MAX_ENEMY_SPEED
         )
 
-        # Random movement offset
         self.jitter = pygame.Vector2(
             uniform(
                 -ENEMY_JITTER,
@@ -155,19 +165,16 @@ class Enemy:
             )
         )
 
-        # How often the jitter changes
         self.jitter_timer = randint(
             30,
             70
         )
 
-        # How often the enemy's speed changes
         self.speed_timer = randint(
             120,
             300
         )
 
-        # Collision rectangle
         self.rect = pygame.Rect(
             int(x),
             int(y),
@@ -181,10 +188,6 @@ class Enemy:
     # =========================================================================
 
     def update(self, player_position):
-
-        # ---------------------------------------------------------------------
-        # CHANGE JITTER OCCASIONALLY
-        # ---------------------------------------------------------------------
 
         self.jitter_timer -= 1
 
@@ -200,16 +203,11 @@ class Enemy:
                 ENEMY_JITTER
             )
 
-            # Higher number = less frequent jitter
             self.jitter_timer = randint(
                 30,
                 70
             )
 
-
-        # ---------------------------------------------------------------------
-        # CHANGE SPEED OCCASIONALLY
-        # ---------------------------------------------------------------------
 
         self.speed_timer -= 1
 
@@ -220,16 +218,11 @@ class Enemy:
                 MAX_ENEMY_SPEED
             )
 
-            # Speed changes every 2–5 seconds
             self.speed_timer = randint(
                 120,
                 300
             )
 
-
-        # ---------------------------------------------------------------------
-        # FIND DIRECTION TO PLAYER
-        # ---------------------------------------------------------------------
 
         direction = (
             player_position -
@@ -240,7 +233,6 @@ class Enemy:
 
             direction = direction.normalize()
 
-            # Add subtle random movement
             direction += self.jitter
 
             if direction.length_squared() > 0:
@@ -248,29 +240,15 @@ class Enemy:
                 direction = direction.normalize()
 
 
-        # ---------------------------------------------------------------------
-        # TARGET VELOCITY
-        # ---------------------------------------------------------------------
-
         target_velocity = (
             direction *
             self.speed
         )
 
-
-        # ---------------------------------------------------------------------
-        # ACCELERATE TOWARD TARGET VELOCITY
-        # ---------------------------------------------------------------------
-
         self.velocity = self.velocity.lerp(
             target_velocity,
             ENEMY_ACCELERATION
         )
-
-
-        # ---------------------------------------------------------------------
-        # MOVE
-        # ---------------------------------------------------------------------
 
         self.position += self.velocity
 
@@ -296,10 +274,6 @@ class Enemy:
 
             self.position.y = -ENEMY_SIZE
 
-
-        # ---------------------------------------------------------------------
-        # UPDATE COLLISION RECTANGLE
-        # ---------------------------------------------------------------------
 
         self.rect.topleft = (
             round(self.position.x),
@@ -350,13 +324,10 @@ class Game:
         # TELEPORT
         # ---------------------------------------------------------------------
 
-        # True means there is a teleport ready to place
         self.teleport_available = True
 
-        # Vector2 means a teleport marker currently exists
         self.teleport_marker = None
 
-        # Seconds remaining on cooldown
         self.teleport_cooldown = 0.0
 
 
@@ -377,12 +348,39 @@ class Game:
 
 
         # ---------------------------------------------------------------------
+        # BEAMS
+        # ---------------------------------------------------------------------
+
+        self.beam_active = False
+
+        self.beam_number = 0
+
+        self.beam_phase = "warning"
+
+        self.beam_timer = 0.0
+
+        self.beam_angle = 0.0
+
+        self.beam_start = None
+
+        self.beam_end = None
+
+        self.beam_wave_count = 0
+
+
+        # ---------------------------------------------------------------------
+        # SCREEN SHAKE
+        # ---------------------------------------------------------------------
+
+        self.screen_shake_timer = 0.0
+
+
+        # ---------------------------------------------------------------------
         # INITIALIZE
         # ---------------------------------------------------------------------
 
         self.reset()
 
-        # Start at menu
         self.state = "menu"
 
 
@@ -392,7 +390,6 @@ class Game:
 
     def reset(self):
 
-        # Player
         self.player_position.update(
             100,
             100
@@ -404,13 +401,11 @@ class Game:
         )
 
 
-        # Score
         self.score = 0
 
         self.score_counter = 0
 
 
-        # Teleport
         self.teleport_available = True
 
         self.teleport_marker = None
@@ -418,20 +413,43 @@ class Game:
         self.teleport_cooldown = 0.0
 
 
-        # Enemies
         self.enemies.clear()
 
 
-        # Start with two enemies
-        self.add_enemy(
-            300,
-            200
-        )
+        # ---------------------------------------------------------------------
+        # BEAMS
+        # ---------------------------------------------------------------------
 
-        self.add_enemy(
-            600,
-            500
-        )
+        self.beam_active = False
+
+        self.beam_number = 0
+
+        self.beam_phase = "warning"
+
+        self.beam_timer = 0.0
+
+        self.beam_angle = 0.0
+
+        self.beam_start = None
+
+        self.beam_end = None
+
+        self.beam_wave_count = 0
+
+
+        # ---------------------------------------------------------------------
+        # SCREEN SHAKE
+        # ---------------------------------------------------------------------
+
+        self.screen_shake_timer = 0.0
+
+
+        # Start with two enemies.
+        # These are also spawned at the center.
+
+        self.add_enemy()
+
+        self.add_enemy()
 
 
     # =========================================================================
@@ -440,36 +458,17 @@ class Game:
 
     def add_enemy(self, x=None, y=None):
 
-        # If no position is provided, find a random safe position
-        if x is None or y is None:
+        # All new enemies spawn at the center of the screen.
 
-            while True:
+        x = (
+            SCREEN_WIDTH // 2 -
+            ENEMY_SIZE // 2
+        )
 
-                x = randint(
-                    0,
-                    SCREEN_WIDTH - ENEMY_SIZE
-                )
-
-                y = randint(
-                    0,
-                    SCREEN_HEIGHT - ENEMY_SIZE
-                )
-
-                spawn_position = pygame.Vector2(
-                    x,
-                    y
-                )
-
-                distance = (
-                    spawn_position.distance_to(
-                        self.player_position
-                    )
-                )
-
-                # Don't spawn directly next to player
-                if distance > 200:
-                    break
-
+        y = (
+            SCREEN_HEIGHT // 2 -
+            ENEMY_SIZE // 2
+        )
 
         self.enemies.append(
             Enemy(
@@ -480,57 +479,358 @@ class Game:
 
 
     # =========================================================================
+    # CREATE BEAM
+    # =========================================================================
+
+    def create_beam(self):
+
+        self.beam_angle = uniform(
+            0,
+            math.pi
+        )
+
+        direction = pygame.Vector2(
+            math.cos(self.beam_angle),
+            math.sin(self.beam_angle)
+        )
+
+        center = pygame.Vector2(
+            SCREEN_WIDTH / 2,
+            SCREEN_HEIGHT / 2
+        )
+
+        length = math.hypot(
+            SCREEN_WIDTH,
+            SCREEN_HEIGHT
+        ) * 2
+
+        self.beam_start = (
+            center -
+            direction * length
+        )
+
+        self.beam_end = (
+            center +
+            direction * length
+        )
+
+
+    # =========================================================================
+    # START BEAM WAVE
+    # =========================================================================
+
+    def start_beam_wave(self):
+
+        self.beam_active = True
+
+        self.beam_number = 1
+
+        self.beam_phase = "warning"
+
+        self.beam_timer = (
+            BEAM_WARNING_DURATION
+        )
+
+        self.create_beam()
+
+
+    # =========================================================================
+    # BEAM HITS PLAYER
+    # =========================================================================
+
+    def beam_hits_player(self):
+
+        if (
+            self.beam_start is None
+            or self.beam_end is None
+        ):
+            return False
+
+
+        # ---------------------------------------------------------------------
+        # CREATE THE EXACT SAME BEAM USED FOR DRAWING
+        # ---------------------------------------------------------------------
+
+        beam_length = math.hypot(
+            SCREEN_WIDTH,
+            SCREEN_HEIGHT
+        ) * 2
+
+
+        beam_surface = pygame.Surface(
+            (
+                int(beam_length),
+                BEAM_WIDTH
+            ),
+            pygame.SRCALPHA
+        )
+
+
+        beam_surface.fill(
+            (
+                255,
+                0,
+                0,
+                255
+            )
+        )
+
+
+        rotated_beam = pygame.transform.rotate(
+            beam_surface,
+            -math.degrees(
+                self.beam_angle
+            )
+        )
+
+
+        beam_rect = rotated_beam.get_rect(
+            center=(
+                SCREEN_WIDTH // 2,
+                SCREEN_HEIGHT // 2
+            )
+        )
+
+
+        # ---------------------------------------------------------------------
+        # CREATE BEAM MASK
+        # ---------------------------------------------------------------------
+
+        beam_mask = pygame.mask.from_surface(
+            rotated_beam
+        )
+
+
+        # ---------------------------------------------------------------------
+        # CREATE PLAYER MASK
+        # ---------------------------------------------------------------------
+
+        player_surface = pygame.Surface(
+            (
+                PLAYER_SIZE,
+                PLAYER_SIZE
+            ),
+            pygame.SRCALPHA
+        )
+
+        player_surface.fill(
+            WHITE
+        )
+
+
+        player_mask = pygame.mask.from_surface(
+            player_surface
+        )
+
+
+        # ---------------------------------------------------------------------
+        # PLAYER POSITION
+        # ---------------------------------------------------------------------
+
+        player_rect = pygame.Rect(
+            round(self.player_position.x),
+            round(self.player_position.y),
+            PLAYER_SIZE,
+            PLAYER_SIZE
+        )
+
+
+        # ---------------------------------------------------------------------
+        # CONVERT PLAYER POSITION INTO BEAM-SURFACE SPACE
+        # ---------------------------------------------------------------------
+
+        offset = (
+            player_rect.x - beam_rect.x,
+            player_rect.y - beam_rect.y
+        )
+
+
+        # ---------------------------------------------------------------------
+        # PIXEL-PERFECT COLLISION
+        # ---------------------------------------------------------------------
+
+        return (
+            beam_mask.overlap(
+                player_mask,
+                offset
+            )
+            is not None
+        )
+
+
+    # =========================================================================
+    # UPDATE BEAM
+    # =========================================================================
+
+    def update_beam(self, dt):
+
+        if not self.beam_active:
+
+            return
+
+
+        self.beam_timer -= dt
+
+
+        # ---------------------------------------------------------------------
+        # CURRENT PHASE FINISHED
+        # ---------------------------------------------------------------------
+
+        if self.beam_timer <= 0:
+
+            # -----------------------------------------------------------------
+            # WARNING -> ACTUAL BEAM
+            # -----------------------------------------------------------------
+
+            if self.beam_phase == "warning":
+
+                self.beam_phase = "beam"
+
+                self.beam_timer = (
+                    BEAM_DURATION
+                )
+
+
+            # -----------------------------------------------------------------
+            # ACTUAL BEAM -> NEXT WARNING
+            # -----------------------------------------------------------------
+
+            else:
+
+                self.beam_number += 1
+
+
+                # All three beams finished
+                if self.beam_number > BEAM_COUNT:
+
+                    self.beam_active = False
+
+                    self.beam_number = 0
+
+                    self.beam_timer = 0.0
+
+                    self.beam_start = None
+
+                    self.beam_end = None
+
+
+                else:
+
+                    self.create_beam()
+
+                    self.beam_phase = "warning"
+
+                    self.beam_timer = (
+                        BEAM_WARNING_DURATION
+                    )
+
+
+        # ---------------------------------------------------------------------
+        # PLAYER COLLISION
+        # ---------------------------------------------------------------------
+
+        # Warning beams do not hurt the player.
+
+        if (
+            self.beam_active
+            and self.beam_phase == "beam"
+        ):
+
+            if self.beam_hits_player():
+
+                self.screen_shake_timer = (
+                    SCREEN_SHAKE_DURATION
+                )
+
+                self.state = "game_over"
+
+                return
+
+
+    # =========================================================================
+    # SCREEN SHAKE
+    # =========================================================================
+
+    def update_screen_shake(self, dt):
+
+        if self.screen_shake_timer > 0:
+
+            self.screen_shake_timer -= dt
+
+            if self.screen_shake_timer < 0:
+
+                self.screen_shake_timer = 0
+
+
+    # =========================================================================
+    # GET SCREEN SHAKE
+    # =========================================================================
+
+    def get_screen_shake(self):
+
+        if self.screen_shake_timer <= 0:
+
+            return 0, 0
+
+
+        strength = (
+            SCREEN_SHAKE_AMOUNT *
+            (
+                self.screen_shake_timer /
+                SCREEN_SHAKE_DURATION
+            )
+        )
+
+
+        return (
+            randint(
+                -int(strength),
+                int(strength)
+            ),
+            randint(
+                -int(strength),
+                int(strength)
+            )
+        )
+
+
+    # =========================================================================
     # TELEPORT
     # =========================================================================
 
     def teleport(self):
-
-        # ---------------------------------------------------------------------
-        # PLACE TELEPORT
-        # ---------------------------------------------------------------------
 
         if (
             self.teleport_available
             and self.teleport_marker is None
         ):
 
-            # Store player's current location
             self.teleport_marker = pygame.Vector2(
                 self.player_position
             )
 
-            # Teleport is no longer in inventory
             self.teleport_available = False
 
             return
 
 
-        # ---------------------------------------------------------------------
-        # USE TELEPORT
-        # ---------------------------------------------------------------------
-
         if self.teleport_marker is not None:
 
-            # Move player to marker
             self.player_position.update(
                 self.teleport_marker
             )
 
-            # Remove all player momentum
             self.player_velocity.update(
                 0,
                 0
             )
 
-            # Remove teleport marker
             self.teleport_marker = None
 
-            # Start the 10-second cooldown
             self.teleport_cooldown = (
                 TELEPORT_COOLDOWN
             )
 
-            # Teleport is unavailable during cooldown
             self.teleport_available = False
 
 
@@ -540,13 +840,11 @@ class Game:
 
     def update_teleport(self, dt):
 
-        # Only run if the teleport is cooling down
         if self.teleport_cooldown > 0:
 
             self.teleport_cooldown -= dt
 
 
-            # Cooldown finished
             if self.teleport_cooldown <= 0:
 
                 self.teleport_cooldown = 0
@@ -563,7 +861,6 @@ class Game:
         keys = pygame.key.get_pressed()
 
 
-        # Current acceleration
         acceleration = pygame.Vector2(
             0,
             0
@@ -644,11 +941,45 @@ class Game:
 
 
         # ---------------------------------------------------------------------
-        # SCREEN WRAP
+        # SCREEN BOUNDARIES
         # ---------------------------------------------------------------------
 
-        self.player_position.x %= SCREEN_WIDTH
-        self.player_position.y %= SCREEN_HEIGHT
+        if self.player_position.x < 0:
+
+            self.player_position.x = 0
+
+            self.player_velocity.x = 0
+
+        elif (
+            self.player_position.x >
+            SCREEN_WIDTH - PLAYER_SIZE
+        ):
+
+            self.player_position.x = (
+                SCREEN_WIDTH -
+                PLAYER_SIZE
+            )
+
+            self.player_velocity.x = 0
+
+
+        if self.player_position.y < 0:
+
+            self.player_position.y = 0
+
+            self.player_velocity.y = 0
+
+        elif (
+            self.player_position.y >
+            SCREEN_HEIGHT - PLAYER_SIZE
+        ):
+
+            self.player_position.y = (
+                SCREEN_HEIGHT -
+                PLAYER_SIZE
+            )
+
+            self.player_velocity.y = 0
 
 
     # =========================================================================
@@ -657,22 +988,42 @@ class Game:
 
     def update_enemy_count(self):
 
-        # Start with 2 enemies.
-        #
-        # Every 2 points adds another enemy.
-        #
-        # Score 0  -> 2 enemies
-        # Score 2  -> 3 enemies
-        # Score 4  -> 4 enemies
-        # Score 6  -> 5 enemies
-        # Score 8  -> 6 enemies
-        # etc.
-
         desired_count = (
             2 +
             self.score // ENEMY_SCORE_INTERVAL
         )
 
+
+        # ---------------------------------------------------------------------
+        # START LASER WAVE AT EVERY 10-ENEMY THRESHOLD
+        # ---------------------------------------------------------------------
+
+        reached_waves = (
+            desired_count // 10
+        )
+
+
+        if reached_waves > self.beam_wave_count:
+
+            self.start_beam_wave()
+
+            self.beam_wave_count += 1
+
+            return
+
+
+        # ---------------------------------------------------------------------
+        # DON'T SPAWN ENEMIES DURING LASER
+        # ---------------------------------------------------------------------
+
+        if self.beam_active:
+
+            return
+
+
+        # ---------------------------------------------------------------------
+        # SPAWN MISSING ENEMIES
+        # ---------------------------------------------------------------------
 
         while len(self.enemies) < desired_count:
 
@@ -685,8 +1036,11 @@ class Game:
 
     def update(self, dt):
 
-        # Don't update gameplay while in menu/game over
         if self.state != "playing":
+
+            self.update_screen_shake(
+                dt
+            )
 
             return
 
@@ -719,6 +1073,24 @@ class Game:
 
 
         # ---------------------------------------------------------------------
+        # BEAMS
+        # ---------------------------------------------------------------------
+
+        self.update_beam(
+            dt
+        )
+
+
+        # ---------------------------------------------------------------------
+        # SCREEN SHAKE
+        # ---------------------------------------------------------------------
+
+        self.update_screen_shake(
+            dt
+        )
+
+
+        # ---------------------------------------------------------------------
         # SCORE
         # ---------------------------------------------------------------------
 
@@ -731,8 +1103,6 @@ class Game:
 
             self.score_counter = 0
 
-
-            # Add enemies if necessary
             self.update_enemy_count()
 
 
@@ -801,7 +1171,7 @@ class Game:
     def draw_menu(self):
 
         self.centered_text(
-            "NO GAME",
+            "ARENA",
             big_font,
             WHITE,
             120
@@ -863,6 +1233,93 @@ class Game:
 
     def draw_game(self):
 
+        game_surface = pygame.Surface(
+            (
+                SCREEN_WIDTH,
+                SCREEN_HEIGHT
+            )
+        )
+
+        game_surface.fill(
+            BLACK
+        )
+
+
+        # ---------------------------------------------------------------------
+        # BEAM
+        # ---------------------------------------------------------------------
+
+        if self.beam_active:
+
+            beam_length = math.hypot(
+                SCREEN_WIDTH,
+                SCREEN_HEIGHT
+            ) * 2
+
+
+            beam_surface = pygame.Surface(
+                (
+                    int(beam_length),
+                    BEAM_WIDTH
+                ),
+                pygame.SRCALPHA
+            )
+
+
+            # -----------------------------------------------------------------
+            # WARNING
+            # -----------------------------------------------------------------
+
+            if self.beam_phase == "warning":
+
+                beam_surface.fill(
+                    (
+                        255,
+                        0,
+                        0,
+                        70
+                    )
+                )
+
+
+            # -----------------------------------------------------------------
+            # ACTUAL BEAM
+            # -----------------------------------------------------------------
+
+            else:
+
+                beam_surface.fill(
+                    (
+                        255,
+                        0,
+                        0,
+                        255
+                    )
+                )
+
+
+            rotated_beam = pygame.transform.rotate(
+                beam_surface,
+                -math.degrees(
+                    self.beam_angle
+                )
+            )
+
+
+            beam_rect = rotated_beam.get_rect(
+                center=(
+                    SCREEN_WIDTH // 2,
+                    SCREEN_HEIGHT // 2
+                )
+            )
+
+
+            game_surface.blit(
+                rotated_beam,
+                beam_rect
+            )
+
+
         # ---------------------------------------------------------------------
         # TELEPORT MARKER
         # ---------------------------------------------------------------------
@@ -882,7 +1339,7 @@ class Game:
             )
 
             pygame.draw.rect(
-                screen,
+                game_surface,
                 GREEN,
                 marker_rect
             )
@@ -900,7 +1357,7 @@ class Game:
         )
 
         pygame.draw.rect(
-            screen,
+            game_surface,
             WHITE,
             player_rect
         )
@@ -913,7 +1370,7 @@ class Game:
         for enemy in self.enemies:
 
             enemy.draw(
-                screen
+                game_surface
             )
 
 
@@ -927,7 +1384,7 @@ class Game:
             WHITE
         )
 
-        screen.blit(
+        game_surface.blit(
             score_text,
             (10, 10)
         )
@@ -943,7 +1400,7 @@ class Game:
             RED
         )
 
-        screen.blit(
+        game_surface.blit(
             enemy_text,
             (10, 45)
         )
@@ -975,7 +1432,7 @@ class Game:
             GREEN
         )
 
-        screen.blit(
+        game_surface.blit(
             teleport_text,
             (10, 80)
         )
@@ -991,10 +1448,68 @@ class Game:
             WHITE
         )
 
-        screen.blit(
+        game_surface.blit(
             speed_text,
             (10, 115)
         )
+
+
+        # ---------------------------------------------------------------------
+        # BEAM STATUS
+        # ---------------------------------------------------------------------
+
+        if self.beam_active:
+
+            if self.beam_phase == "warning":
+
+                beam_status = (
+                    f"WARNING "
+                    f"{self.beam_number}/{BEAM_COUNT}"
+                )
+
+            else:
+
+                beam_status = (
+                    f"BEAM "
+                    f"{self.beam_number}/{BEAM_COUNT}"
+                )
+
+
+            beam_text = font.render(
+                beam_status,
+                True,
+                RED
+            )
+
+            game_surface.blit(
+                beam_text,
+                (
+                    SCREEN_WIDTH - 190,
+                    10
+                )
+            )
+
+
+        # ---------------------------------------------------------------------
+        # SCREEN SHAKE
+        # ---------------------------------------------------------------------
+
+        shake_x, shake_y = self.get_screen_shake()
+
+
+        screen.fill(
+            BLACK
+        )
+
+        screen.blit(
+            game_surface,
+            (
+                shake_x,
+                shake_y
+            )
+        )
+
+        pygame.display.flip()
 
 
     # =========================================================================
@@ -1056,20 +1571,24 @@ class Game:
         )
 
 
+        pygame.display.flip()
+
+
     # =========================================================================
     # DRAW
     # =========================================================================
 
     def draw(self):
 
-        screen.fill(
-            BLACK
-        )
-
-
         if self.state == "menu":
 
+            screen.fill(
+                BLACK
+            )
+
             self.draw_menu()
+
+            pygame.display.flip()
 
 
         elif self.state == "playing":
@@ -1080,9 +1599,6 @@ class Game:
         elif self.state == "game_over":
 
             self.draw_game_over()
-
-
-        pygame.display.flip()
 
 
 # =============================================================================
@@ -1166,11 +1682,6 @@ while running:
     # =========================================================================
     # DELTA TIME
     # =========================================================================
-
-    # Convert milliseconds to seconds.
-    #
-    # This allows the teleport cooldown to use actual seconds rather
-    # than relying on the game's FPS.
 
     dt = clock.tick(FPS) / 1000.0
 
